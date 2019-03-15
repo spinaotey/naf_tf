@@ -58,7 +58,7 @@ class Trainer:
             
             
     def train(self, sess, train_data, val_data=None, p_val = 0.05, max_iterations=1000, batch_size=100,
-              early_stopping=20, check_every_N=5, saver_name='tmp_model', show_log=False):
+              early_stopping=20, check_every_N=5, saver_name='tmp_model', show_log=False,show_train_loss=None):
         """
         Training function to be called with desired parameters within a tensorflow session.
         :param sess: tensorflow session where the graph is run.
@@ -73,6 +73,7 @@ class Trainer:
         :param check_every_N: check every N iterations if model has improved and saves if so.
         :param saver_name: string of name (with or without folder) where model is saved. If none is given,
             a temporal model is used to save and restore best model, and removed afterwards.
+        :param show_train_loss: show 'all' or 'batch' error of training set. Else no training loss will be shown.
         """
         
         train_idx = np.arange(train_data.shape[0])
@@ -99,10 +100,17 @@ class Trainer:
             sess.run(self.train_op,feed_dict={self.model.input:train_data[batch_idx]})
             # Early stopping check
             if iteration%check_every_N == 0:
-                this_loss = sess.run(self.model.trn_loss,feed_dict={self.model.input:val_data})
+                this_loss = -self.model.eval(val_data,sess).mean()
+                
                 if show_log:
-                    train_loss = sess.run(self.model.trn_loss,feed_dict={self.model.input:train_data})
-                    print("Iteration {:05d}, Train_loss: {:05.4f}, Val_loss: {:05.4f}".format(iteration,train_loss,this_loss))
+                    if show_train_loss == 'batch':
+                        train_loss = -self.model.eval(train_data[batch_idx],sess).mean()
+                        print("Iteration {:05d}, Train_loss: {:05.4f}, Val_loss: {:05.4f}".format(iteration,train_loss,this_loss))
+                    elif show_train_loss == 'all':
+                        train_loss = -self.model.eval(train_data_X,sess).mean()
+                        print("Iteration {:05d}, Train_loss: {:05.4f}, Val_loss: {:05.4f}".format(iteration,train_loss,this_loss))
+                    else:
+                        print("Iteration {:05d}, Val_loss: {:05.4f}".format(iteration,this_loss))
                 if this_loss < bst_loss:
                     bst_loss = this_loss
                     saver.save(sess,saver_name)

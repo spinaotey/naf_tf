@@ -56,7 +56,7 @@ class MaskedAutoregressiveFlowDSF:
         # train objective
         self.trn_loss = -tf.reduce_mean(self.L,name='trn_loss')
         
-    def eval(self, X, sess, log=True,batch_size=10000):
+    def eval(self, X, sess, log=True,batch_size=1000):
         """
         Evaluate log probabilities for given input-context pairs.
         :param X: a pair (x, y) where x rows are inputs and y rows are context variables
@@ -143,7 +143,7 @@ class MaskedAutoregressiveFlowDDSF:
         # train objective
         self.trn_loss = -tf.reduce_mean(self.L,name='trn_loss')
         
-    def eval(self, X, sess, log=True,batch_size=10000):
+    def eval(self, X, sess, log=True,batch_size=1000):
         """
         Evaluate log probabilities for given input-context pairs.
         :param X: a pair (x, y) where x rows are inputs and y rows are context variables
@@ -153,13 +153,13 @@ class MaskedAutoregressiveFlowDDSF:
         :return: log probabilities: log p(y|x)
         """
         
-        if context_dim == 0:
+        if self.context_dim == 0:
             n = len(X)//batch_size
             lprob = []
             for i in range(n):
-                lprob.append(sess.run(self.L,feed_dict={self.input:x[i*batch_size:(i+1)*batch_size]}))
+                lprob.append(sess.run(self.L,feed_dict={self.input:X[i*batch_size:(i+1)*batch_size]}))
 
-            if n != len(y)/batch_size:
+            if n != len(X)/batch_size:
                 lprob.append(sess.run(self.L,feed_dict={self.input:X[n*batch_size:]}))
             
         else:
