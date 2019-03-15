@@ -201,6 +201,8 @@ class IAF_DDSF:
                    num_ds_multiplier*(hid_dim//dim)*num_ds_layers, 
                    activation, fixed_order,input=self.input,
                    context=self.context)
+                   
+        self.parms = self.model.params
         
         num_dsparams = 0
         self.sf = list()
@@ -223,6 +225,7 @@ class IAF_DDSF:
             
             dsf = DenseSigmoidFlow(in_dim,num_ds_dim,out_dim)
             self.sf.append(dsf)
+            self.parms += dsf.parms
         
         self.convlayer = tf.layers.Conv1D(num_dsparams,1)
         dsparams = self.convlayer(self.MADEout)
@@ -257,4 +260,3 @@ class IAF_DDSF:
         self.L = -0.5 * dim * np.log(2 * np.pi) - 0.5 * tf.reduce_sum(self.output ** 2, axis=1,keepdims=True) + \
                  self.logdet
         self.trn_loss = -tf.reduce_mean(self.L)
-        # TODO Define self.parms
