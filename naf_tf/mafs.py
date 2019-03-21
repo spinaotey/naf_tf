@@ -41,7 +41,7 @@ class MaskedAutoregressiveFlowDSF:
             flow = IAF_DSF(dim, hid_dim, context_dim, num_layers,
                  activation, fixed_order,
                  num_ds_dim, num_ds_layers, num_ds_multiplier,
-                 self.u,context)
+                 input=self.u,context=self.context)
             self.flows.append(flow)
             self.parms += flow.parms
             
@@ -128,7 +128,7 @@ class MaskedAutoregressiveFlowDDSF:
             flow = IAF_DDSF(dim, hid_dim, context_dim, num_layers,
                  activation, fixed_order,
                  num_ds_dim, num_ds_layers, num_ds_multiplier,
-                 self.u,context)
+                 self.u,self.context)
             self.flows.append(flow)
             self.parms += flow.parms
             
@@ -163,7 +163,7 @@ class MaskedAutoregressiveFlowDDSF:
                 lprob.append(sess.run(self.L,feed_dict={self.input:X[n*batch_size:]}))
             
         else:
-            x, y = xy
+            x, y = X
             n = len(y)//batch_size
             lprob = []
             for i in range(n):
