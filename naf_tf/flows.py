@@ -50,7 +50,7 @@ class SigmoidFlow:
 class IAF_DSF:
     
     def __init__(self, dim, hid_dim, context_dim, num_layers,
-                 activation=tf.nn.elu, fixed_order=False,
+                 activation=tf.nn.elu, output_order='sequential', mode='sequential',
                  num_ds_dim=4, num_ds_layers=1, num_ds_multiplier=3,
                  input=None,context=None):
         mollify=0.0
@@ -178,7 +178,7 @@ class DenseSigmoidFlow:
 class IAF_DDSF:
     
     def __init__(self, dim, hid_dim, context_dim, num_layers,
-                 activation=tf.nn.elu, fixed_order=False,
+                 activation=tf.nn.elu, output_order='sequential', mode='sequential',
                  num_ds_dim=4, num_ds_layers=1, num_ds_multiplier=3,
                  input=None,context=None):
         
@@ -199,7 +199,7 @@ class IAF_DDSF:
 
         self.model = cMADE(dim, hid_dim, int(self.context.shape[1]), num_layers, 
                    num_ds_multiplier*(hid_dim//dim)*num_ds_layers, 
-                   activation, fixed_order,input=self.input,
+                   activation, output_order, mode, input=self.input,
                    context=self.context)
                    
         self.parms = self.model.params

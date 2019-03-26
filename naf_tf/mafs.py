@@ -12,7 +12,7 @@ class MaskedAutoregressiveFlowDSF:
     """
 
     def __init__(self, dim, hid_dim, context_dim, num_layers, num_flows,
-                 activation=tf.nn.elu, fixed_order=False,
+                 activation=tf.nn.elu, output_order='sequential', mode='sequential',
                  num_ds_dim=4, num_ds_layers=1, num_ds_multiplier=3,
                  input=None,context=None):
     
@@ -39,12 +39,13 @@ class MaskedAutoregressiveFlowDSF:
 
             # create a new flow
             flow = IAF_DSF(dim, hid_dim, context_dim, num_layers,
-                 activation, fixed_order,
+                 activation, output_order, mode,
                  num_ds_dim, num_ds_layers, num_ds_multiplier,
                  input=self.u,context=self.context)
             self.flows.append(flow)
             self.parms += flow.parms
             
+            output_order = output_order if output_order == 'random' else flow.model.output_order[::-1]
             self.u = flow.output
             self.logdet += flow.logdet
 
@@ -99,7 +100,7 @@ class MaskedAutoregressiveFlowDDSF:
     """
 
     def __init__(self, dim, hid_dim, context_dim, num_layers, num_flows,
-                 activation=tf.nn.elu, fixed_order=False,
+                 activation=tf.nn.elu, output_order='sequential', mode='sequential',
                  num_ds_dim=4, num_ds_layers=1, num_ds_multiplier=3,
                  input=None,context=None):
     
@@ -126,12 +127,13 @@ class MaskedAutoregressiveFlowDDSF:
 
             # create a new flow
             flow = IAF_DDSF(dim, hid_dim, context_dim, num_layers,
-                 activation, fixed_order,
+                 activation, output_order, mode,
                  num_ds_dim, num_ds_layers, num_ds_multiplier,
                  self.u,self.context)
             self.flows.append(flow)
             self.parms += flow.parms
             
+            output_order = output_order if output_order == 'random' else flow.model.output_order[::-1]
             self.u = flow.output
             self.logdet += flow.logdet
 

@@ -1,110 +1,120 @@
 import tensorflow as tf
 import numpy as np
 import numpy.random as rng
-import naf_tf.utils.nn as nn_
-from naf_tf.utils.nn import log
 
 dtype = tf.float32
 
-from functools import reduce
+def create_degrees(dim, n_hiddens, n_outputs, input_order, mode):
+    """
+    Generates a degree for each hidden and input unit. A unit with degree d can only receive input from units with
+    degree less than d.
+    :param n_inputs: the number of inputs
+    :param n_hiddens: a list with the number of hidden units
+    :param input_order: the order of the inputs; can be 'random', 'sequential', or an array of an explicit order
+    :param mode: the strategy for assigning degrees to hidden nodes: can be 'random' or 'sequential'
+    :return: list of degrees
+    """
 
-def get_rank(max_rank, num_out):
-    """
-    Creates rank_out vector with values from 0 to max_rank-1 of size num_out.
-    :param max_rank: maximum rank of output vector
-    :param num_out: size of output vector
-    :return: vector rank_out of size num_out
-    """
-    rank_out = np.array([])
-    while len(rank_out) < num_out:
-        rank_out = np.concatenate([rank_out, np.arange(max_rank)])
-    excess = len(rank_out) - num_out
-    remove_ind = rng.choice(max_rank,excess,False)
-    rank_out = np.delete(rank_out,remove_ind)
-    rng.shuffle(rank_out)
-    return rank_out.astype('float32')
-    
+    degrees = []
 
-def get_mask_from_ranks(r1, r2):
-    """
-    Creates binary mask of zeros and ones to connect ranks properly.
-    :param r1: input rank
-    :param r2: output rank
-    :return: binary matrix to connect r1 to r2
-    """
-    return (r2[:, None] >= r1[None, :]).astype('float32')
+    # create degrees for inputs
+    if isinstance(input_order, str):
 
-def get_masks_all(ds, fixed_order=False, derank=1):
-    """
-    Creates list of masks for all hidden layers given their dimensions in ds.
-    Also outputs the random rank assigned to each variable at the beggining.
-    :params ds: list of dimensions dx, d1, d2, ... dh, dx (h hidden layers)
-    :params fixed_order: fix order of inputs. If False, they will be randomized
-    :params derank: only used for self connection, dim > 1
-    :return: (ms,rx), ms list of masks, rx rank order of iputs.
-    """
-    dx = ds[0]
-    ms = list()
-    rx = get_rank(dx, dx)
-    if fixed_order:
-        rx = np.sort(rx)
-    r1 = rx
-    if dx != 1:
-        for d in ds[1:-1]:
-            r2 = get_rank(dx-derank, d)
-            ms.append(get_mask_from_ranks(r1, r2))
-            r1 = r2
-        r2 = rx - derank
-        ms.append(get_mask_from_ranks(r1, r2))
+        if input_order == 'random':
+            degrees_0 = np.arange(1, dim + 1)
+            rng.shuffle(degrees_0)
+
+        elif input_order == 'sequential':
+            degrees_0 = np.arange(1, dim + 1)
+
+        else:
+            raise ValueError('invalid input order')
+
     else:
-        ms = [np.zeros([ds[i+1],ds[i]]).astype('float32') for \
-              i in range(len(ds)-1)]
-    if derank==1:
-        assert np.all(np.diag(reduce(np.dot,ms[::-1])) == 0), 'wrong masks'
+        input_order = np.array(input_order)
+        assert np.all(np.sort(input_order) == np.arange(1, dim + 1)), 'invalid input order'
+        degrees_0 = input_order
+    degrees.append(degrees_0)
+
+    # create degrees for hiddens
+    if mode == 'random':
+        for N in n_hiddens:
+            min_prev_degree = min(np.min(degrees[-1]), dim - 1)
+            degrees_l = rng.randint(min_prev_degree, dim, N)
+            degrees.append(degrees_l)
+
+    elif mode == 'sequential':
+        for N in n_hiddens:
+            degrees_l = np.arange(N) % max(1, dim - 1) + min(1, dim - 1)
+            degrees.append(degrees_l)
+
+    else:
+        raise ValueError('invalid mode')
+        
+    degrees.append(np.repeat(degrees_0,n_outputs))
+
+    return degrees
+
+def create_masks(degrees):
+    """
+    Creates the binary masks that make the connectivity autoregressive.
+    :param degrees: a list of degrees for every layer
+    :return: list of all masks, as theano shared variables
+    """
+
+    Ms = []
+
+    for l, (d0, d1) in enumerate(zip(degrees[:-1], degrees[1:])):
+        M = d0[:, np.newaxis] <= d1
+        M = tf.constant(M, dtype=dtype, name='M' + str(l+1))
+        Ms.append(M)
+
+    return Ms
+
+def create_weights(dim, n_hiddens, n_outputs):
+    """
+    Creates all learnable weight matrices and bias vectors.
+    :param n_inputs: the number of inputs
+    :param n_hiddens: a list with the number of hidden units
+    :param n_comps: number of gaussian components
+    :return: weights and biases, as tensorflow variables
+    """
+
+    Ws = []
+    bs = []
+
+    n_units = np.concatenate(([dim], n_hiddens, [dim*n_outputs]))
+
+    for l, (N0, N1) in enumerate(zip(n_units[:-1], n_units[1:])):
+        W = tf.Variable((rng.randn(N0, N1) / np.sqrt(N0 + 1)), dtype=dtype, name='W' + str(l+1))
+        b = tf.Variable(np.zeros([1,N1]), dtype=dtype, name='b' + str(l+1))
+        Ws.append(W)
+        bs.append(b)
     
-    return ms, rx
+    return Ws, bs
 
+def create_weights_conditional(dim, context_dim, n_hiddens, n_outputs):
+    """
+    Creates all learnable weight matrices and bias vectors for a conditional made.
+    :param n_inputs: the number of (conditional) inputs
+    :param n_outputs: the number of outputs
+    :param n_hiddens: a list with the number of hidden units
+    :param n_comps: number of gaussian components
+    :return: weights and biases, as tensorflow variables
+    """
 
-def get_masks(dim, dh, num_layers, num_outlayers, fixed_order=False, derank=1):
-    """
-    Creates all masks for a MADE for different number of outlayers for each 
-    input dimension.
-    :params dim: input dimension
-    :params dh: hidden layers dimension
-    :params num_layers: number of hidden layers
-    :params num_outlayers: number of output layers for each input dimension
-    :params fixed_order: fix order of inputs. If False, they will be randomized
-    :params derank: only used for self connection, dim > 1
-    :return: (ms,rx), ms list of masks, rx rank order of iputs.
-    """
-    ms, rx = get_masks_all([dim,]+[dh for i in range(num_layers-1)]+[dim,],
-                           fixed_order, derank)
-    ml = ms[-1]
-    ml_ = (ml.transpose(1,0)[:,:,None]*([np.cast['float32'](1),] *\
-                           num_outlayers)).reshape(
-                           dh, dim*num_outlayers).transpose(1,0)
-    ms[-1]  = ml_
-    ms = [m.T for m in ms]
-    return ms, rx
+    Wx = tf.Variable(rng.randn(context_dim, n_hiddens[0]) / np.sqrt(context_dim + 1), dtype=dtype, name='Wx')
+
+    return (Wx,) + create_weights(dim, n_hiddens, n_outputs)
 
 class cMADE:
     """
-    Conditional MADE class using conditional weight normalization as conection with masks.
+    Implements a Made, where each conditional probability is modelled by a single gaussian component. The made has
+    inputs which is always conditioned on, and whose probability it doesn't model.
     """
     def __init__(self, dim, hid_dim, context_dim, num_layers,
-                 num_outlayers=1, activation=tf.nn.elu, fixed_order=False,
-                 derank=1, input=None, context=None):
-        """
-        Class initializer.
-        :params dim: input dimension
-        :params hid_dim: hidden layers dimension
-        :params context_dim: context dimension of the conditional space
-        :params num_layers: number of hidden layers
-        :params num_outlayers: number of output layers for each input dimension
-        :params activation: tensorflow activation function between layers
-        :params fixed_order: fix order of inputs. If False, they will be randomized
-        :params derank: only used for self connection, dim > 1
-        """
+                 num_outlayers=1, activation=tf.nn.elu, output_order='sequential', 
+                 mode='sequential', input=None, context=None):
         
         self.dim = dim
         self.hid_dim = hid_dim
@@ -112,27 +122,23 @@ class cMADE:
         self.context_dim = context_dim
         self.num_outlayers = num_outlayers
         self.activation = activation
+        self.mode = mode
+        self.hiddens = [hid_dim for _ in range(num_layers)]
         self.params = list()
         self.input = tf.placeholder(dtype=dtype,shape=[None,in_features],name='x') if input is None else input
         self.context = tf.placeholder(dtype=dtype,shape=[None,context_features],name='context') if context is None\
                                                                                                 else context
+        # create network's parameters
+        degrees = create_degrees(dim, self.hiddens, num_outlayers, output_order, mode)
+        Ms = create_masks(degrees)
+        Wx, Ws, bs = create_weights_conditional(dim, context_dim, self.hiddens, num_outlayers)
+        self.parms = [Wx] + Ws + bs
+        self.output_order = degrees[0]
         
-        # Get masks as tensorflow tensors and input order
-        ms, rx = get_masks(dim, hid_dim, num_layers, num_outlayers,
-                           fixed_order, derank)
-        ms = [tf.convert_to_tensor(m,dtype=dtype) for m in ms]
-        self.ms = ms
-        self.rx = rx
-        
-        for i in range(num_layers-1):
-            if i==0:
-                layer = nn_.CWNlinear(dim,hid_dim,context_dim,ms[i],False,self.input,self.context)
-                h = activation(layer.output)
-                self.params += layer.params
-            else:
-                layer = nn_.CWNlinear(hid_dim,hid_dim,context_dim,ms[i],False,h,self.context)
-                h = activation(layer.output)
-                self.params += layer.params
-        layer = nn_.CWNlinear(hid_dim, dim*num_outlayers, context_dim, ms[-1],input=h,context=self.context)
-        self.output = tf.reshape(layer.output,[-1,self.dim, self.num_outlayers])
-        self.params += layer.params
+        # feedforward propagation
+        f = activation
+        h = f(tf.matmul(self.context, Wx) + tf.matmul(self.input, Ms[0] * Ws[0]) + bs[0],name='h1')
+        for l, (M, W, b) in enumerate(zip(Ms[1:-1], Ws[1:-1], bs[1:-1])):
+            h = f(tf.matmul(h, M * W) + b,name='h'+str(l + 2))
+        h = tf.matmul(h, Ms[-1] * Ws[-1]) + bs[-1]
+        self.output = tf.reshape(h,[-1,self.dim, self.num_outlayers],name='output')
